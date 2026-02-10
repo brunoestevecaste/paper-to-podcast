@@ -1,0 +1,32 @@
+# --- Python y Entornos Virtuales ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+
+# --- Variables de Entorno y Secretos ---
+.env
+.env.local
+*.json
+# Excepción: si usas service accounts de google, ignora los JSONs de claves
+client_secret.json
+service_account.json
+
+# --- Archivos generados por la App (Paper-to-Podcast) ---
+*.mp3
+*.wav
+temp/
+output/
+
+# --- IDEs y Sistema Operativo ---
+.DS_Store
+.idea/
+.vscode/
