@@ -35,5 +35,5 @@ Siga los siguientes pasos para ejecutar el proyecto en un entorno local.
 ### 1. Clonar el repositorio
 
 ```bash
-git clone [https://github.com/usuario/paper-to-podcast.git](https://github.com/usuario/paper-to-podcast.git)
+git clone [https://github.com/brunoestevecaste/paper-to-podcast.git](https://github.com/brunoestevecaste/paper-to-podcast.git)
 cd paper-to-podcast
