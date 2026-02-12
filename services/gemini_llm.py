@@ -1,8 +1,12 @@
-import google.generativeai as genai
 import base64
 import json
 import math
 import re
+
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
 
 try:
     from google import genai as google_genai
@@ -14,6 +18,8 @@ except Exception:
 
 def configure_gemini(api_key):
     try:
+        if genai is None:
+            return False
         if not api_key:
             return False
         genai.configure(api_key=api_key)
@@ -24,6 +30,9 @@ def configure_gemini(api_key):
 
 def generate_podcast_script(text_content, api_key):
     """Usa Gemini Pro para convertir texto tecnico en un dialogo."""
+    if genai is None:
+        return "Error en Gemini: falta dependencia 'google-generativeai'. Ejecuta: pip install -r requirements.txt"
+
     if not configure_gemini(api_key):
         return None
 
@@ -150,7 +159,7 @@ def build_rag_index(text_content, api_key):
         return {"chunks": [], "embeddings": [], "retrieval_mode": "lexical"}
 
     # Si falla configuracion o embeddings, dejamos fallback lexical.
-    if not configure_gemini(api_key):
+    if genai is None or not configure_gemini(api_key):
         return {"chunks": chunks, "embeddings": [], "retrieval_mode": "lexical"}
 
     embeddings = []
@@ -221,6 +230,9 @@ def _retrieve_top_chunks(question, rag_index, api_key, top_k=4):
 
 def answer_question_with_rag(question, rag_index, api_key):
     """Responde preguntas usando solo contexto recuperado del PDF."""
+    if genai is None:
+        return "Error en Gemini: falta dependencia 'google-generativeai'. Ejecuta: pip install -r requirements.txt"
+
     if not configure_gemini(api_key):
         return "Error en Gemini: API key invalida o vacia."
 
