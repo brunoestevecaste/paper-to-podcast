@@ -13,18 +13,33 @@ st.set_page_config(
 
 st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Hind+Madurai:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800&display=swap');
+
     /* Ocultar elementos default de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
+    /* Tipografia global */
+    .stApp, .stApp p, .stApp li, .stApp label, .stApp div, .stApp input, .stApp textarea, .stApp button {
+        font-family: 'Hind Madurai', sans-serif;
+    }
+
     /* Estilo del Titulo */
     h1 {
         color: #213e47;
-        font-family: 'Helvetica', sans-serif;
+        font-family: 'Montserrat', sans-serif;
         font-weight: 300;
         text-align: center;
         margin-bottom: 2rem;
+    }
+    h2, h3, .api-key-title, .app-subtitle {
+        font-family: 'Lora', serif;
+    }
+    .app-subtitle {
+        text-align: center;
+        color: #213e47;
+        opacity: 0.7;
     }
 
     /* Bloque minimalista para API Key */
@@ -95,7 +110,7 @@ if "infographic_image" not in st.session_state:
 # --- Interfaz Principal ---
 
 st.title("Paper to Podcast 🎙️")
-st.markdown("<p style='text-align: center; color: #213e47; opacity: 0.7;'>Convierte tus documentos en audio con IA de Google</p>", unsafe_allow_html=True)
+st.markdown("<p class='app-subtitle'>Convierte tus documentos en audio con IA de Google</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 st.markdown(
@@ -111,7 +126,7 @@ st.markdown(
 api_key = st.text_input(
     "API Key",
     type="password",
-    placeholder="AIza...",
+    placeholder="Introduce tu API key de Google...",
     help="Se usa solo en esta sesion para llamar a Gemini.",
 )
 
@@ -121,7 +136,7 @@ uploaded_file = st.file_uploader("Sube tu PDF aqui", type="pdf")
 if uploaded_file is not None:
 
     # Boton de Procesamiento
-    if st.button("Generar Podcast Magico"):
+    if st.button("Generar Podcast e Infografia"):
         clean_key = api_key.strip()
         if not clean_key:
             st.warning("Introduce tu API key para continuar.")
