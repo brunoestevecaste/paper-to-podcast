@@ -112,7 +112,7 @@ def generate_infographic_image(text_content, api_key):
     try:
         client = google_genai.Client(api_key=api_key)
         response = client.models.generate_images(
-            model="imagen-3.0-generate-002",
+            model="gemini-2.5-flash-image",
             prompt=prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
