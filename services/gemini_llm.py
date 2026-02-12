@@ -1,4 +1,5 @@
 import google.generativeai as genai
+import base64
 
 try:
     from google import genai as google_genai
@@ -74,6 +75,57 @@ def _extract_image_bytes(response):
     return None
 
 
+def _extract_inline_image_bytes(response):
+    """Extrae bytes de imagen desde respuestas de generate_content."""
+    if not response:
+        return None
+
+    parts = getattr(response, "parts", None)
+    if parts:
+        for part in parts:
+            inline_data = getattr(part, "inline_data", None)
+            if not inline_data:
+                continue
+
+            mime_type = getattr(inline_data, "mime_type", "")
+            data = getattr(inline_data, "data", None)
+            if not data or not str(mime_type).startswith("image/"):
+                continue
+
+            if isinstance(data, bytes):
+                return data
+            if isinstance(data, str):
+                try:
+                    return base64.b64decode(data)
+                except Exception:
+                    continue
+
+    candidates = getattr(response, "candidates", None)
+    if candidates:
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            candidate_parts = getattr(content, "parts", None) if content else None
+            if not candidate_parts:
+                continue
+            for part in candidate_parts:
+                inline_data = getattr(part, "inline_data", None)
+                if not inline_data:
+                    continue
+                mime_type = getattr(inline_data, "mime_type", "")
+                data = getattr(inline_data, "data", None)
+                if not data or not str(mime_type).startswith("image/"):
+                    continue
+                if isinstance(data, bytes):
+                    return data
+                if isinstance(data, str):
+                    try:
+                        return base64.b64decode(data)
+                    except Exception:
+                        continue
+
+    return None
+
+
 def generate_infographic_image(text_content, api_key):
     """
     Genera una infografia en PNG a partir del contenido del PDF.
@@ -111,17 +163,43 @@ def generate_infographic_image(text_content, api_key):
 
     try:
         client = google_genai.Client(api_key=api_key)
-        response = client.models.generate_images(
-            model="gemini-3-flash-preview",
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/png",
-            ),
-        )
-        image_bytes = _extract_image_bytes(response)
-        if not image_bytes:
-            return "Error en Imagen: no se recibieron bytes de imagen."
-        return image_bytes
+        content_models = [
+            "gemini-2.5-flash-image",
+            "gemini-2.5-flash-image-preview",
+            "gemini-3-pro-image-preview",
+        ]
+        model_errors = []
+
+        for model_name in content_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt],
+                )
+                image_bytes = _extract_inline_image_bytes(response)
+                if image_bytes:
+                    return image_bytes
+                model_errors.append(f"{model_name}: respuesta sin imagen")
+            except Exception as model_error:
+                model_errors.append(f"{model_name}: {model_error}")
+
+        # Fallback opcional a Imagen API (si la cuenta tiene acceso).
+        try:
+            response = client.models.generate_images(
+                model="imagen-3.0-generate-002",
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/png",
+                ),
+            )
+            image_bytes = _extract_image_bytes(response)
+            if image_bytes:
+                return image_bytes
+            model_errors.append("imagen-3.0-generate-002: respuesta sin imagen")
+        except Exception as imagen_error:
+            model_errors.append(f"imagen-3.0-generate-002: {imagen_error}")
+
+        return "Error en Imagen: no fue posible generar la infografia. Detalle: " + " | ".join(model_errors)
     except Exception as e:
         return f"Error en Imagen: {e}"
