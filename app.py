@@ -1,4 +1,5 @@
 import streamlit as st
+from textwrap import dedent
 from utils.pdf_processor import extract_text_from_pdf
 from services.gemini_llm import generate_infographic_image, generate_podcast_script
 from services.google_tts import text_to_audio
@@ -11,93 +12,123 @@ st.set_page_config(
 )
 
 
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Hind+Madurai:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800&display=swap');
+st.markdown(
+    dedent(
+        """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Hind+Madurai:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800&display=swap');
 
-    /* Ocultar elementos default de Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+:root {
+    --font-title: 'Montserrat', sans-serif;
+    --font-subtitle: 'Lora', serif;
+    --font-body: 'Hind Madurai', sans-serif;
+}
 
-    /* Tipografia global */
-    .stApp, .stApp p, .stApp li, .stApp label, .stApp div, .stApp input, .stApp textarea, .stApp button {
-        font-family: 'Hind Madurai', sans-serif;
-    }
+/* Ocultar elementos default de Streamlit */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
 
-    /* Estilo del Titulo */
-    h1 {
-        color: #213e47;
-        font-family: 'Montserrat', sans-serif;
-        font-weight: 300;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    h2, h3, .api-key-title, .app-subtitle {
-        font-family: 'Lora', serif;
-    }
-    .app-subtitle {
-        text-align: center;
-        color: #213e47;
-        opacity: 0.7;
-    }
+/* Tipografia global (texto) */
+html, body, .stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stTextInput"] label p,
+[data-testid="stFileUploader"] label,
+[data-testid="stButton"] button,
+[data-testid="stDownloadButton"] button,
+[data-testid="stExpander"] summary,
+[data-testid="stTextInput"] input,
+.stTextArea textarea {
+    font-family: var(--font-body) !important;
+}
 
-    /* Bloque minimalista para API Key */
-    .api-key-card {
-        border: 1px solid #213e47;
-        border-radius: 10px;
-        background: #f9dec4;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.6rem;
-    }
-    .api-key-title {
-        color: #213e47;
-        font-weight: 700;
-        margin: 0;
-    }
-    .api-key-copy {
-        color: #213e47;
-        opacity: 0.8;
-        margin: 0.2rem 0 0 0;
-        font-size: 0.92rem;
-    }
+/* Titulos */
+h1,
+[data-testid="stMarkdownContainer"] h1 {
+    color: #213e47;
+    font-family: var(--font-title) !important;
+    font-weight: 700 !important;
+    text-align: center;
+    margin-bottom: 2rem;
+}
 
-    /* Estilo del area de carga */
-    .stFileUploader {
-        border: 1px dashed #213e47;
-        border-radius: 10px;
-        padding: 10px;
-    }
+/* Subtitulos */
+h2, h3, h4,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4,
+.api-key-title, .app-subtitle {
+    font-family: var(--font-subtitle) !important;
+}
 
-    /* Botones Personalizados */
-    div.stButton > button {
-        background-color: #213e47;
-        color: #f9dec4;
-        border: none;
-        border-radius: 5px;
-        padding: 0.5rem 1rem;
-        font-weight: bold;
-        width: 100%;
-        transition: all 0.3s;
-    }
-    div.stButton > button:hover {
-        background-color: #1a3138;
-        color: #fff;
-    }
+.app-subtitle {
+    text-align: center;
+    color: #213e47;
+    opacity: 0.7;
+}
 
-    /* Inputs */
-    .stTextArea textarea,
-    div[data-testid="stTextInput"] input {
-        background-color: #fff;
-        color: #213e47;
-        border: 1px solid #213e47;
-    }
-    div[data-testid="stTextInput"] label p {
-        color: #213e47;
-        font-weight: 600;
-    }
-    </style>
-""", unsafe_allow_html=True)
+/* Bloque minimalista para API Key */
+.api-key-card {
+    border: 1px solid #213e47;
+    border-radius: 10px;
+    background: #f9dec4;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.6rem;
+}
+.api-key-title {
+    color: #213e47;
+    font-weight: 700;
+    margin: 0;
+}
+.api-key-copy {
+    color: #213e47;
+    opacity: 0.8;
+    margin: 0.2rem 0 0 0;
+    font-size: 0.92rem;
+}
+
+/* Estilo del area de carga */
+.stFileUploader {
+    border: 1px dashed #213e47;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* Botones Personalizados */
+div.stButton > button {
+    background-color: #213e47;
+    color: #f9dec4;
+    border: none;
+    border-radius: 5px;
+    padding: 0.5rem 1rem;
+    font-weight: bold;
+    width: 100%;
+    transition: all 0.3s;
+}
+div.stButton > button:hover {
+    background-color: #1a3138;
+    color: #fff;
+}
+
+/* Inputs */
+.stTextArea textarea,
+div[data-testid="stTextInput"] input {
+    background-color: #fff;
+    color: #213e47;
+    border: 1px solid #213e47;
+}
+div[data-testid="stTextInput"] label p {
+    color: #213e47;
+    font-weight: 600;
+}
+</style>
+"""
+    ),
+    unsafe_allow_html=True,
+)
 
 # --- Estado de la Sesion ---
 if "script" not in st.session_state:
