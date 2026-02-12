@@ -317,7 +317,7 @@ def generate_infographic_image(text_content, api_key):
         content_config = None
         if hasattr(types, "GenerateContentConfig"):
             content_config = types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
+                response_modalities=["IMAGE", "TEXT"],
             )
 
         for model_name in content_models:
