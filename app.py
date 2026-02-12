@@ -1,6 +1,6 @@
 import streamlit as st
 from utils.pdf_processor import extract_text_from_pdf
-from services.gemini_llm import generate_podcast_script
+from services.gemini_llm import generate_infographic_image, generate_podcast_script
 from services.google_tts import text_to_audio
 
 # --- Configuracion de Pagina ---
@@ -89,6 +89,8 @@ if "script" not in st.session_state:
     st.session_state["script"] = None
 if "audio_file" not in st.session_state:
     st.session_state["audio_file"] = None
+if "infographic_image" not in st.session_state:
+    st.session_state["infographic_image"] = None
 
 # --- Interfaz Principal ---
 
@@ -127,6 +129,13 @@ if uploaded_file is not None:
             with st.status("Analizando documento...", expanded=True) as status:
                 st.write("Leyendo PDF...")
                 raw_text = extract_text_from_pdf(uploaded_file)
+                if raw_text.startswith("Error al leer el PDF:"):
+                    st.session_state["script"] = None
+                    st.session_state["audio_file"] = None
+                    st.session_state["infographic_image"] = None
+                    status.update(label="No se pudo leer el PDF", state="error", expanded=True)
+                    st.error(raw_text)
+                    st.stop()
 
                 st.write("Gemini esta escribiendo el guion...")
                 script = generate_podcast_script(raw_text, clean_key)
@@ -134,15 +143,26 @@ if uploaded_file is not None:
                 if not script:
                     st.session_state["script"] = None
                     st.session_state["audio_file"] = None
+                    st.session_state["infographic_image"] = None
                     status.update(label="No se pudo generar el guion", state="error", expanded=True)
                     st.error("API key invalida o error de conexion con Gemini.")
                 elif script.startswith("Error en Gemini:"):
                     st.session_state["script"] = None
                     st.session_state["audio_file"] = None
+                    st.session_state["infographic_image"] = None
                     status.update(label="Error de Gemini", state="error", expanded=True)
                     st.error(script)
                 else:
                     st.session_state["script"] = script
+
+                    st.write("Generando infografia...")
+                    infographic_image = generate_infographic_image(raw_text, clean_key)
+                    if isinstance(infographic_image, str) and infographic_image.startswith("Error en Imagen:"):
+                        st.session_state["infographic_image"] = None
+                        st.warning(infographic_image)
+                    else:
+                        st.session_state["infographic_image"] = infographic_image
+
                     st.write("Generando voces...")
                     audio_bytes = text_to_audio(script)
 
@@ -171,6 +191,21 @@ if st.session_state["script"]:
         )
 
     st.markdown("---")
+
+    if st.session_state["infographic_image"]:
+        st.markdown("### Tu Infografia")
+        st.image(
+            st.session_state["infographic_image"],
+            caption="Infografia generada con IA de Google",
+            use_container_width=True,
+        )
+        st.download_button(
+            label="Descargar Infografia (PNG)",
+            data=st.session_state["infographic_image"],
+            file_name="infografia.png",
+            mime="image/png",
+        )
+        st.markdown("---")
 
     # Mostrar el Guion
     with st.expander("Ver el guion generado"):

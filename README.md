@@ -4,12 +4,13 @@
 
 Paper-to-Podcast es una aplicación web desarrollada en Python utilizando el framework Streamlit. Su propósito principal es transformar documentos técnicos, académicos o extensos (en formato PDF) en contenido de audio digerible con formato de podcast o diálogo conversacional.
 
-La aplicación utiliza la infraestructura de Inteligencia Artificial de Google, específicamente los modelos generativos Gemini (vía Google AI Studio) para el procesamiento de lenguaje natural y la generación de guiones, junto con servicios de síntesis de voz (Text-to-Speech) para la producción del audio final.
+La aplicación utiliza la infraestructura de Inteligencia Artificial de Google, específicamente los modelos generativos Gemini (vía Google AI Studio) para el procesamiento de lenguaje natural y la generación de guiones, modelos de generación visual para crear infografías, junto con servicios de síntesis de voz (Text-to-Speech) para la producción del audio final.
 
 ## Características Principales
 
 * **Extracción de Texto:** Procesamiento automático de archivos PDF para la extracción de contenido textual crudo.
 * **Generación de Guiones con IA:** Utilización del modelo Google Gemini 1.5 (Flash/Pro) para analizar el texto, sintetizar los puntos clave y reformular el contenido en un diálogo estructurado entre dos interlocutores.
+* **Generación de Infografías con IA:** Creación automática de una infografía visual (PNG) con los hallazgos más relevantes del PDF.
 * **Síntesis de Voz (TTS):** Conversión del guion generado a un archivo de audio (MP3) utilizando tecnologías de Text-to-Speech.
 * **Interfaz Minimalista:** Diseño de interfaz de usuario limpio y funcional, optimizado para la legibilidad y la facilidad de uso.
 
@@ -20,7 +21,8 @@ El flujo de datos de la aplicación sigue una arquitectura lineal de cuatro etap
 1.  **Ingesta:** El usuario carga un archivo PDF a través de la interfaz de Streamlit.
 2.  **Procesamiento:** El módulo `pdf_processor` utiliza `PyPDF2` para extraer la cadena de texto del documento.
 3.  **Transformación (LLM):** El texto extraído se envía a la API de Google Generative AI. Mediante ingeniería de prompts, el modelo Gemini convierte el contenido técnico en un guion conversacional.
-4.  **Síntesis:** El guion resultante es procesado por el módulo `google_tts` (gTTS) para generar el archivo de audio final, que se presenta al usuario para su reproducción o descarga.
+4.  **Generación Visual:** El contenido del PDF también se transforma en una infografía en imagen con modelos de Google.
+5.  **Síntesis:** El guion resultante es procesado por el módulo `google_tts` (gTTS) para generar el archivo de audio final, que se presenta al usuario para su reproducción o descarga.
 
 ## Requisitos Previos
 
