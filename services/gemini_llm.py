@@ -149,6 +149,60 @@ def _lexical_score(question, chunk):
     return len(overlap) / len(q_tokens)
 
 
+def _looks_like_spanish(text):
+    if not text:
+        return False
+
+    lowered = f" {text.lower()} "
+    spanish_markers = [
+        " el ", " la ", " los ", " las ", " de ", " que ", " y ", " en ", " para ",
+        " con ", " una ", " un ", " por ", " como ", " se ", " del ", " al ",
+        "¿", "¡", "á", "é", "í", "ó", "ú", "ñ",
+    ]
+    hits = sum(1 for marker in spanish_markers if marker in lowered)
+    return hits >= 2
+
+
+def _build_query_variants(question, api_key):
+    """
+    Crea variantes bilingues de la pregunta para mejorar retrieval lexical.
+    Si Gemini no esta disponible, retorna solo la pregunta original.
+    """
+    clean_question = (question or "").strip()
+    if not clean_question:
+        return []
+
+    variants = [clean_question]
+    if genai is None or not configure_gemini(api_key):
+        return variants
+
+    source_lang = "Spanish" if _looks_like_spanish(clean_question) else "English"
+    target_lang = "English" if source_lang == "Spanish" else "Spanish"
+
+    prompt = f"""
+Translate the following user question to {target_lang}.
+Return only the translated question, with no explanations.
+
+Question:
+{clean_question}
+"""
+
+    try:
+        model = genai.GenerativeModel("gemini-3-flash-preview")
+        response = model.generate_content(prompt)
+        translated = (getattr(response, "text", "") or "").strip()
+        if translated:
+            variants.append(translated)
+    except Exception:
+        pass
+
+    return variants
+
+
+def _not_found_message(question):
+    return "No encuentro esa informacion en el PDF." if _looks_like_spanish(question) else "I can't find that information in the PDF."
+
+
 def build_rag_index(text_content, api_key):
     """
     Crea un indice RAG en memoria.
@@ -195,30 +249,44 @@ def _retrieve_top_chunks(question, rag_index, api_key, top_k=4):
     if not chunks:
         return []
 
+    question_variants = _build_query_variants(question, api_key)
+    if not question_variants:
+        question_variants = [question]
+
     retrieval_mode = (rag_index or {}).get("retrieval_mode", "lexical")
     if retrieval_mode == "semantic":
         try:
             configure_gemini(api_key)
-            query_response = genai.embed_content(
-                model="models/text-embedding-004",
-                content=question,
-                task_type="retrieval_query",
-            )
-            query_vector = _parse_embedding_response(query_response)
-            if query_vector:
-                scored = []
-                for idx, chunk_vector in enumerate((rag_index or {}).get("embeddings", [])):
-                    score = _cosine_similarity(query_vector, chunk_vector)
-                    scored.append((score, idx))
-                scored.sort(reverse=True, key=lambda item: item[0])
-                selected_idx = [idx for score, idx in scored[:top_k] if score >= 0.15]
-                return [chunks[idx] for idx in selected_idx]
+            query_vectors = []
+            for query in question_variants:
+                query_response = genai.embed_content(
+                    model="models/text-embedding-004",
+                    content=query,
+                    task_type="retrieval_query",
+                )
+                query_vector = _parse_embedding_response(query_response)
+                if query_vector:
+                    query_vectors.append(query_vector)
+
+            if not query_vectors:
+                return []
+
+            scored = []
+            for idx, chunk_vector in enumerate((rag_index or {}).get("embeddings", [])):
+                best_score = -1.0
+                for query_vector in query_vectors:
+                    best_score = max(best_score, _cosine_similarity(query_vector, chunk_vector))
+                scored.append((best_score, idx))
+
+            scored.sort(reverse=True, key=lambda item: item[0])
+            selected_idx = [idx for score, idx in scored[:top_k] if score >= 0.15]
+            return [chunks[idx] for idx in selected_idx]
         except Exception:
             pass
 
     scored = []
     for idx, chunk in enumerate(chunks):
-        score = _lexical_score(question, chunk)
+        score = max(_lexical_score(candidate, chunk) for candidate in question_variants) if question_variants else 0.0
         scored.append((score, idx))
     scored.sort(reverse=True, key=lambda item: item[0])
     selected_idx = [idx for score, idx in scored[:top_k] if score > 0]
@@ -238,7 +306,7 @@ def answer_question_with_rag(question, rag_index, api_key):
 
     top_chunks = _retrieve_top_chunks(question, rag_index, api_key=api_key, top_k=4)
     if not top_chunks:
-        return "No encuentro esa informacion en el PDF."
+        return _not_found_message(question)
 
     context_blocks = []
     for idx, chunk in enumerate(top_chunks, start=1):
@@ -246,20 +314,24 @@ def answer_question_with_rag(question, rag_index, api_key):
     context = "\n\n".join(context_blocks)
 
     prompt = f"""
-Eres un asistente de preguntas y respuestas sobre un PDF.
+You are a question-answering assistant over a PDF.
 
-Reglas estrictas:
-1. Responde solo con informacion contenida en el CONTEXTO.
-2. Si la respuesta no esta en el CONTEXTO, responde exactamente:
-   "No encuentro esa informacion en el PDF."
-3. No uses conocimiento externo.
-4. Responde en espanol y de forma concisa.
-5. Si respondes con contenido del contexto, incluye al final "Fuentes: [C#]" con los fragmentos usados.
+Strict rules:
+1. Answer only with information contained in CONTEXT.
+2. If the answer is not in CONTEXT, reply exactly:
+   - Spanish: "No encuentro esa informacion en el PDF."
+   - English: "I can't find that information in the PDF."
+3. Do not use external knowledge.
+4. Answer in the same language as the user question (Spanish or English).
+5. Keep the answer concise.
+6. If you answer using context, append sources at the end:
+   - For Spanish answers: "Fuentes: [C#]"
+   - For English answers: "Sources: [C#]"
 
-PREGUNTA DEL USUARIO:
+USER QUESTION:
 {question}
 
-CONTEXTO:
+CONTEXT:
 {context}
 """
 
@@ -267,7 +339,7 @@ CONTEXTO:
         model = genai.GenerativeModel("gemini-3-flash-preview")
         response = model.generate_content(prompt)
         answer = getattr(response, "text", "") or _extract_text_from_response(response)
-        return answer.strip() if answer else "No encuentro esa informacion en el PDF."
+        return answer.strip() if answer else _not_found_message(question)
     except Exception as e:
         return f"Error en Gemini: {e}"
 
