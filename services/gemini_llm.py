@@ -1,44 +1,42 @@
 import google.generativeai as genai
-import streamlit as st
-import os
 
-# Configuración inicial
-def configure_gemini():
+
+def configure_gemini(api_key):
     try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
+        if not api_key:
+            return False
         genai.configure(api_key=api_key)
         return True
-    except Exception as e:
-        st.error("Falta la API Key en .streamlit/secrets.toml")
+    except Exception:
         return False
 
-def generate_podcast_script(text_content):
-    """Usa Gemini Pro para convertir texto técnico en un diálogo."""
-    if not configure_gemini():
+
+def generate_podcast_script(text_content, api_key):
+    """Usa Gemini Pro para convertir texto tecnico en un dialogo."""
+    if not configure_gemini(api_key):
         return None
 
-    # Usamos Gemini 1.5 Flash para rapidez, o Pro para calidad
-    model = genai.GenerativeModel('gemini-3-flash-preview')
+    model = genai.GenerativeModel("gemini-3-flash-preview")
 
     prompt = f"""
     Eres un guionista de podcasts experto y creativo.
-    
+
     TU TAREA:
-    Convierte el siguiente texto (extraído de un documento PDF) en un guion de podcast atractivo entre dos personas: Alex (Curioso) y Sam (Experto).
-    
+    Convierte el siguiente texto (extraido de un documento PDF) en un guion de podcast atractivo entre dos personas: Alex (Curioso) y Sam (Experto).
+
     REGLAS:
-    1. Idioma: Español.
-    2. Tono: Conversacional, educativo, dinámico y minimalista.
-    3. Estructura: 
+    1. Idioma: Espanol.
+    2. Tono: Conversacional, educativo, dinamico y minimalista.
+    3. Estructura:
        - Breve intro.
-       - Discusión de los 3 puntos más importantes del texto.
-       - Conclusión rápida.
-    4. Formato de salida: Solo el texto del diálogo. No uses acotaciones de sonido como [Música] o [Aplausos].
-    
+       - Discusion de los 3 puntos mas importantes del texto.
+       - Conclusion rapida.
+    4. Formato de salida: Solo el texto del dialogo. No uses acotaciones de sonido como [Musica] o [Aplausos].
+
     TEXTO ORIGINAL:
     {text_content[:30000]}  # Limitamos caracteres por seguridad
     """
-    
+
     try:
         response = model.generate_content(prompt)
         return response.text

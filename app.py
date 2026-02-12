@@ -3,7 +3,7 @@ from utils.pdf_processor import extract_text_from_pdf
 from services.gemini_llm import generate_podcast_script
 from services.google_tts import text_to_audio
 
-# --- Configuración de Página ---
+# --- Configuracion de Pagina ---
 st.set_page_config(
     page_title="Paper-to-Podcast",
     page_icon="🎙️",
@@ -17,8 +17,8 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Estilo del Título */
+
+    /* Estilo del Titulo */
     h1 {
         color: #213e47;
         font-family: 'Helvetica', sans-serif;
@@ -26,14 +26,34 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
-    
-    /* Estilo del área de carga */
+
+    /* Bloque minimalista para API Key */
+    .api-key-card {
+        border: 1px solid #213e47;
+        border-radius: 10px;
+        background: #f9dec4;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.6rem;
+    }
+    .api-key-title {
+        color: #213e47;
+        font-weight: 700;
+        margin: 0;
+    }
+    .api-key-copy {
+        color: #213e47;
+        opacity: 0.8;
+        margin: 0.2rem 0 0 0;
+        font-size: 0.92rem;
+    }
+
+    /* Estilo del area de carga */
     .stFileUploader {
         border: 1px dashed #213e47;
         border-radius: 10px;
         padding: 10px;
     }
-    
+
     /* Botones Personalizados */
     div.stButton > button {
         background-color: #213e47;
@@ -46,24 +66,29 @@ st.markdown("""
         transition: all 0.3s;
     }
     div.stButton > button:hover {
-        background-color: #1a3138; /* Un tono más oscuro */
+        background-color: #1a3138;
         color: #fff;
     }
-    
-    /* Cajas de texto */
-    .stTextArea textarea {
+
+    /* Inputs */
+    .stTextArea textarea,
+    div[data-testid="stTextInput"] input {
         background-color: #fff;
         color: #213e47;
         border: 1px solid #213e47;
     }
+    div[data-testid="stTextInput"] label p {
+        color: #213e47;
+        font-weight: 600;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- Estado de la Sesión ---
-if 'script' not in st.session_state:
-    st.session_state['script'] = None
-if 'audio_file' not in st.session_state:
-    st.session_state['audio_file'] = None
+# --- Estado de la Sesion ---
+if "script" not in st.session_state:
+    st.session_state["script"] = None
+if "audio_file" not in st.session_state:
+    st.session_state["audio_file"] = None
 
 # --- Interfaz Principal ---
 
@@ -71,49 +96,82 @@ st.title("Paper to Podcast 🎙️")
 st.markdown("<p style='text-align: center; color: #213e47; opacity: 0.7;'>Convierte tus documentos en audio con IA de Google</p>", unsafe_allow_html=True)
 st.markdown("---")
 
+st.markdown(
+    """
+    <div class="api-key-card">
+        <p class="api-key-title">Tu API Key de Google</p>
+        <p class="api-key-copy">Introduce tu clave para generar el guion. No se guarda en el proyecto.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+api_key = st.text_input(
+    "API Key",
+    type="password",
+    placeholder="AIza...",
+    help="Se usa solo en esta sesion para llamar a Gemini.",
+)
+
 # 1. Subida de Archivo
-uploaded_file = st.file_uploader("Sube tu PDF aquí", type="pdf")
+uploaded_file = st.file_uploader("Sube tu PDF aqui", type="pdf")
 
 if uploaded_file is not None:
-    
-    # Botón de Procesamiento
-    if st.button("Generar Podcast Mágico ✨"):
-        
-        with st.status("Analizando documento...", expanded=True) as status:
-            # Paso 1: Extraer Texto
-            st.write("📄 Leyendo PDF...")
-            raw_text = extract_text_from_pdf(uploaded_file)
-            
-            # Paso 2: Generar Guion con Gemini
-            st.write("Gemini está escribiendo el guion...")
-            script = generate_podcast_script(raw_text)
-            st.session_state['script'] = script
-            
-            # Paso 3: Generar Audio
-            st.write("Generando voces...")
-            audio_bytes = text_to_audio(script)
-            st.session_state['audio_file'] = audio_bytes
-            
-            status.update(label="¡Podcast listo!", state="complete", expanded=False)
 
-# --- Visualización de Resultados ---
-if st.session_state['script']:
-    st.markdown("### 🎧 Tu Podcast")
-    
+    # Boton de Procesamiento
+    if st.button("Generar Podcast Magico"):
+        clean_key = api_key.strip()
+        if not clean_key:
+            st.warning("Introduce tu API key para continuar.")
+        else:
+            with st.status("Analizando documento...", expanded=True) as status:
+                st.write("Leyendo PDF...")
+                raw_text = extract_text_from_pdf(uploaded_file)
+
+                st.write("Gemini esta escribiendo el guion...")
+                script = generate_podcast_script(raw_text, clean_key)
+
+                if not script:
+                    st.session_state["script"] = None
+                    st.session_state["audio_file"] = None
+                    status.update(label="No se pudo generar el guion", state="error", expanded=True)
+                    st.error("API key invalida o error de conexion con Gemini.")
+                elif script.startswith("Error en Gemini:"):
+                    st.session_state["script"] = None
+                    st.session_state["audio_file"] = None
+                    status.update(label="Error de Gemini", state="error", expanded=True)
+                    st.error(script)
+                else:
+                    st.session_state["script"] = script
+                    st.write("Generando voces...")
+                    audio_bytes = text_to_audio(script)
+
+                    if audio_bytes is None:
+                        st.session_state["audio_file"] = None
+                        status.update(label="No se pudo generar el audio", state="error", expanded=True)
+                        st.error("Error al convertir el guion a audio.")
+                    else:
+                        st.session_state["audio_file"] = audio_bytes
+                        status.update(label="Podcast listo", state="complete", expanded=False)
+
+# --- Visualizacion de Resultados ---
+if st.session_state["script"]:
+    st.markdown("### Tu Podcast")
+
     # Reproductor de Audio
-    if st.session_state['audio_file']:
-        st.audio(st.session_state['audio_file'], format='audio/mp3')
-        
-        # Botón de descarga
+    if st.session_state["audio_file"]:
+        st.audio(st.session_state["audio_file"], format="audio/mp3")
+
+        # Boton de descarga
         st.download_button(
             label="Descargar MP3",
-            data=st.session_state['audio_file'],
+            data=st.session_state["audio_file"],
             file_name="mi_podcast.mp3",
             mime="audio/mp3"
         )
 
     st.markdown("---")
-    
+
     # Mostrar el Guion
     with st.expander("Ver el guion generado"):
-        st.write(st.session_state['script'])
+        st.write(st.session_state["script"])
