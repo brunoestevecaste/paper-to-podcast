@@ -10,15 +10,22 @@ build/
 
 # --- Streamlit ---
 .streamlit/secrets.toml
+.streamlit/credentials.toml
 
 
 # --- Variables de Entorno y Secretos ---
 .env
 .env.local
+.env.*
+!.env.example
 *.json
 # Excepción: si usas service accounts de google, ignora los JSONs de claves
 client_secret.json
 service_account.json
+*.pem
+*.key
+*.p12
+*.pfx
 
 # --- Archivos generados por la App (Paper-to-Podcast) ---
 *.mp3
