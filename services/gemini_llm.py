@@ -1,6 +1,8 @@
 import google.generativeai as genai
 import base64
 import json
+import math
+import re
 
 try:
     from google import genai as google_genai
@@ -49,6 +51,211 @@ def generate_podcast_script(text_content, api_key):
     try:
         response = model.generate_content(prompt)
         return response.text
+    except Exception as e:
+        return f"Error en Gemini: {e}"
+
+
+def _chunk_text(text_content, chunk_size_words=220, overlap_words=40):
+    """Divide texto en chunks con solapamiento para retrieval."""
+    normalized = re.sub(r"\s+", " ", text_content or "").strip()
+    if not normalized:
+        return []
+
+    words = normalized.split(" ")
+    if len(words) <= chunk_size_words:
+        return [normalized]
+
+    chunks = []
+    step = max(1, chunk_size_words - overlap_words)
+    for start in range(0, len(words), step):
+        end = start + chunk_size_words
+        chunk_words = words[start:end]
+        if not chunk_words:
+            break
+        chunks.append(" ".join(chunk_words))
+        if end >= len(words):
+            break
+    return chunks
+
+
+def _parse_embedding_response(response):
+    """Extrae un vector de embedding de respuestas con distintos formatos."""
+    if response is None:
+        return None
+
+    if isinstance(response, dict):
+        vector = response.get("embedding")
+        if isinstance(vector, list) and vector and isinstance(vector[0], (int, float)):
+            return vector
+        if isinstance(vector, dict):
+            values = vector.get("values")
+            if isinstance(values, list) and values and isinstance(values[0], (int, float)):
+                return values
+
+    vector = getattr(response, "embedding", None)
+    if isinstance(vector, list) and vector and isinstance(vector[0], (int, float)):
+        return vector
+    if isinstance(vector, dict):
+        values = vector.get("values")
+        if isinstance(values, list) and values and isinstance(values[0], (int, float)):
+            return values
+
+    values = getattr(response, "values", None)
+    if isinstance(values, list) and values and isinstance(values[0], (int, float)):
+        return values
+
+    return None
+
+
+def _cosine_similarity(vec_a, vec_b):
+    if not vec_a or not vec_b:
+        return -1.0
+
+    size = min(len(vec_a), len(vec_b))
+    if size == 0:
+        return -1.0
+
+    dot = 0.0
+    norm_a = 0.0
+    norm_b = 0.0
+    for idx in range(size):
+        a = float(vec_a[idx])
+        b = float(vec_b[idx])
+        dot += a * b
+        norm_a += a * a
+        norm_b += b * b
+
+    if norm_a == 0 or norm_b == 0:
+        return -1.0
+    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
+
+
+def _lexical_score(question, chunk):
+    """Fallback simple cuando embeddings no esten disponibles."""
+    q_tokens = set(re.findall(r"\w+", (question or "").lower()))
+    c_tokens = set(re.findall(r"\w+", (chunk or "").lower()))
+    if not q_tokens or not c_tokens:
+        return 0.0
+    overlap = q_tokens.intersection(c_tokens)
+    return len(overlap) / len(q_tokens)
+
+
+def build_rag_index(text_content, api_key):
+    """
+    Crea un indice RAG en memoria.
+    Retorna un dict con chunks + embeddings (si estan disponibles).
+    """
+    chunks = _chunk_text(text_content)
+    if not chunks:
+        return {"chunks": [], "embeddings": [], "retrieval_mode": "lexical"}
+
+    # Si falla configuracion o embeddings, dejamos fallback lexical.
+    if not configure_gemini(api_key):
+        return {"chunks": chunks, "embeddings": [], "retrieval_mode": "lexical"}
+
+    embeddings = []
+    for chunk in chunks:
+        try:
+            response = genai.embed_content(
+                model="models/text-embedding-004",
+                content=chunk,
+                task_type="retrieval_document",
+            )
+            vector = _parse_embedding_response(response)
+            if vector is None:
+                embeddings = []
+                break
+            embeddings.append(vector)
+        except Exception:
+            embeddings = []
+            break
+
+    retrieval_mode = "semantic" if len(embeddings) == len(chunks) else "lexical"
+    if retrieval_mode != "semantic":
+        embeddings = []
+
+    return {
+        "chunks": chunks,
+        "embeddings": embeddings,
+        "retrieval_mode": retrieval_mode,
+    }
+
+
+def _retrieve_top_chunks(question, rag_index, api_key, top_k=4):
+    chunks = (rag_index or {}).get("chunks", [])
+    if not chunks:
+        return []
+
+    retrieval_mode = (rag_index or {}).get("retrieval_mode", "lexical")
+    if retrieval_mode == "semantic":
+        try:
+            configure_gemini(api_key)
+            query_response = genai.embed_content(
+                model="models/text-embedding-004",
+                content=question,
+                task_type="retrieval_query",
+            )
+            query_vector = _parse_embedding_response(query_response)
+            if query_vector:
+                scored = []
+                for idx, chunk_vector in enumerate((rag_index or {}).get("embeddings", [])):
+                    score = _cosine_similarity(query_vector, chunk_vector)
+                    scored.append((score, idx))
+                scored.sort(reverse=True, key=lambda item: item[0])
+                selected_idx = [idx for score, idx in scored[:top_k] if score >= 0.15]
+                return [chunks[idx] for idx in selected_idx]
+        except Exception:
+            pass
+
+    scored = []
+    for idx, chunk in enumerate(chunks):
+        score = _lexical_score(question, chunk)
+        scored.append((score, idx))
+    scored.sort(reverse=True, key=lambda item: item[0])
+    selected_idx = [idx for score, idx in scored[:top_k] if score > 0]
+
+    if not selected_idx:
+        return []
+    return [chunks[idx] for idx in selected_idx]
+
+
+def answer_question_with_rag(question, rag_index, api_key):
+    """Responde preguntas usando solo contexto recuperado del PDF."""
+    if not configure_gemini(api_key):
+        return "Error en Gemini: API key invalida o vacia."
+
+    top_chunks = _retrieve_top_chunks(question, rag_index, api_key=api_key, top_k=4)
+    if not top_chunks:
+        return "No encuentro esa informacion en el PDF."
+
+    context_blocks = []
+    for idx, chunk in enumerate(top_chunks, start=1):
+        context_blocks.append(f"[C{idx}] {chunk[:1700]}")
+    context = "\n\n".join(context_blocks)
+
+    prompt = f"""
+Eres un asistente de preguntas y respuestas sobre un PDF.
+
+Reglas estrictas:
+1. Responde solo con informacion contenida en el CONTEXTO.
+2. Si la respuesta no esta en el CONTEXTO, responde exactamente:
+   "No encuentro esa informacion en el PDF."
+3. No uses conocimiento externo.
+4. Responde en espanol y de forma concisa.
+5. Si respondes con contenido del contexto, incluye al final "Fuentes: [C#]" con los fragmentos usados.
+
+PREGUNTA DEL USUARIO:
+{question}
+
+CONTEXTO:
+{context}
+"""
+
+    try:
+        model = genai.GenerativeModel("gemini-3-flash-preview")
+        response = model.generate_content(prompt)
+        answer = getattr(response, "text", "") or _extract_text_from_response(response)
+        return answer.strip() if answer else "No encuentro esa informacion en el PDF."
     except Exception as e:
         return f"Error en Gemini: {e}"
 

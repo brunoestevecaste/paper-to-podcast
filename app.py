@@ -1,7 +1,12 @@
 import streamlit as st
 from textwrap import dedent
 from utils.pdf_processor import extract_text_from_pdf
-from services.gemini_llm import generate_infographic_image, generate_podcast_script
+from services.gemini_llm import (
+    answer_question_with_rag,
+    build_rag_index,
+    generate_infographic_image,
+    generate_podcast_script,
+)
 from services.google_tts import text_to_audio
 
 # --- Configuracion de Pagina ---
@@ -137,6 +142,14 @@ if "audio_file" not in st.session_state:
     st.session_state["audio_file"] = None
 if "infographic_image" not in st.session_state:
     st.session_state["infographic_image"] = None
+if "pdf_text" not in st.session_state:
+    st.session_state["pdf_text"] = None
+if "pdf_token" not in st.session_state:
+    st.session_state["pdf_token"] = None
+if "rag_index" not in st.session_state:
+    st.session_state["rag_index"] = None
+if "chat_messages" not in st.session_state:
+    st.session_state["chat_messages"] = []
 
 # --- Interfaz Principal ---
 
@@ -165,6 +178,30 @@ api_key = st.text_input(
 uploaded_file = st.file_uploader("Sube tu PDF aqui", type="pdf")
 
 if uploaded_file is not None:
+    current_pdf_token = f"{uploaded_file.name}:{uploaded_file.size}"
+
+    if st.session_state["pdf_token"] != current_pdf_token:
+        raw_text = extract_text_from_pdf(uploaded_file)
+        if raw_text.startswith("Error al leer el PDF:"):
+            st.session_state["pdf_text"] = None
+            st.session_state["pdf_token"] = None
+            st.session_state["rag_index"] = None
+            st.session_state["chat_messages"] = []
+            st.error(raw_text)
+            st.stop()
+
+        st.session_state["pdf_token"] = current_pdf_token
+        st.session_state["pdf_text"] = raw_text
+        st.session_state["rag_index"] = None
+        st.session_state["chat_messages"] = []
+        st.session_state["script"] = None
+        st.session_state["audio_file"] = None
+        st.session_state["infographic_image"] = None
+
+    if st.session_state["pdf_text"]:
+        st.caption(
+            f"PDF listo para preguntas ({len(st.session_state['pdf_text'].split()):,} palabras extraidas)."
+        )
 
     # Boton de Procesamiento
     if st.button("Generar Podcast e Infografia"):
@@ -173,14 +210,13 @@ if uploaded_file is not None:
             st.warning("Introduce tu API key para continuar.")
         else:
             with st.status("Analizando documento...", expanded=True) as status:
-                st.write("Leyendo PDF...")
-                raw_text = extract_text_from_pdf(uploaded_file)
-                if raw_text.startswith("Error al leer el PDF:"):
+                raw_text = st.session_state["pdf_text"]
+                if not raw_text:
                     st.session_state["script"] = None
                     st.session_state["audio_file"] = None
                     st.session_state["infographic_image"] = None
                     status.update(label="No se pudo leer el PDF", state="error", expanded=True)
-                    st.error(raw_text)
+                    st.error("No se encontro texto valido en el PDF.")
                     st.stop()
 
                 st.write("Gemini esta escribiendo el guion...")
@@ -219,6 +255,49 @@ if uploaded_file is not None:
                     else:
                         st.session_state["audio_file"] = audio_bytes
                         status.update(label="Podcast listo", state="complete", expanded=False)
+
+    st.markdown("### Chat con tu PDF (RAG)")
+
+    clean_key = api_key.strip()
+    if not clean_key:
+        st.info("Introduce tu API key para activar el chat sobre el PDF.")
+
+    for message in st.session_state["chat_messages"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    question = st.chat_input("Haz una pregunta especifica sobre el PDF...")
+    if question:
+        st.session_state["chat_messages"].append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        with st.chat_message("assistant"):
+            if not clean_key:
+                answer = "Necesito una API key de Google valida para responder."
+            elif not st.session_state["pdf_text"]:
+                answer = "No hay contenido del PDF disponible para consultar."
+            else:
+                if st.session_state["rag_index"] is None:
+                    with st.spinner("Indexando PDF para RAG..."):
+                        st.session_state["rag_index"] = build_rag_index(
+                            st.session_state["pdf_text"],
+                            clean_key,
+                        )
+                with st.spinner("Buscando en el documento..."):
+                    answer = answer_question_with_rag(
+                        question=question,
+                        rag_index=st.session_state["rag_index"],
+                        api_key=clean_key,
+                    )
+
+            st.markdown(answer)
+            st.session_state["chat_messages"].append({"role": "assistant", "content": answer})
+else:
+    st.session_state["pdf_text"] = None
+    st.session_state["pdf_token"] = None
+    st.session_state["rag_index"] = None
+    st.session_state["chat_messages"] = []
 
 # --- Visualizacion de Resultados ---
 if st.session_state["script"]:
